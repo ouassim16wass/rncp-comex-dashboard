@@ -1,0 +1,40 @@
+groups:
+  - name: services
+    rules:
+      - alert: ServiceInjoignable
+        expr: up == 0
+        for: 2m
+        labels:
+          gravite: critique
+        annotations:
+          resume: "Le service {{ $labels.job }} ne répond plus aux collectes"
+      - alert: TauxErreursEleve
+        expr: sum by (service) (rate(requetes_total{code=~"5.."}[5m])) / sum by (service) (rate(requetes_total[5m])) > 0.05
+        for: 5m
+        labels:
+          gravite: haute
+        annotations:
+          resume: "Plus de 5 % d'erreurs serveur sur {{ $labels.service }}"
+      - alert: LatenceElevee
+        expr: histogram_quantile(0.95, sum by (le, service) (rate(duree_requete_secondes_bucket[5m]))) > 1
+        for: 10m
+        labels:
+          gravite: moyenne
+        annotations:
+          resume: "95 % des requêtes de {{ $labels.service }} dépassent 1 seconde"
+  - name: modele
+    rules:
+      - alert: DeriveDuModele
+        expr: max(modele_psi) > 0.25
+        for: 5m
+        labels:
+          gravite: haute
+        annotations:
+          resume: "Une variable du modèle de risque dérive fortement : réentraînement à envisager"
+      - alert: AucunModeleEnProduction
+        expr: absent(modele_en_production)
+        for: 10m
+        labels:
+          gravite: critique
+        annotations:
+          resume: "Aucun modèle de risque n'est déclaré en production"

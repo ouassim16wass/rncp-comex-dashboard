@@ -1,0 +1,134 @@
+version: 2
+
+sources:
+  - name: staging
+    schema: staging
+    tables:
+      - name: stg_tickets
+  - name: dwh
+    schema: dwh
+    tables:
+      - name: dim_date
+        columns:
+          - name: date_id
+            tests: [unique, not_null]
+      - name: dim_mois_facturation
+        columns:
+          - name: mois_facturation_id
+            tests: [unique, not_null]
+      - name: dim_tiers
+        columns:
+          - name: tiers_id
+            tests: [unique, not_null]
+          - name: code_sage
+            tests: [unique, not_null]
+          - name: type_tiers_id
+            tests:
+              - relationships:
+                  to: source('dwh', 'dim_type_tiers')
+                  field: type_tiers_id
+          - name: segment_id
+            tests:
+              - relationships:
+                  to: source('dwh', 'dim_segment')
+                  field: segment_id
+      - name: dim_type_tiers
+      - name: dim_produit
+      - name: dim_famille_produit
+      - name: dim_commercial
+      - name: dim_mois
+      - name: dim_trimestre
+      - name: dim_segment
+      - name: dim_service
+        columns:
+          - name: service_id
+            tests: [unique, not_null]
+          - name: domaine_id
+            tests:
+              - relationships:
+                  to: source('dwh', 'dim_domaine')
+                  field: domaine_id
+      - name: dim_domaine
+      - name: dim_compte
+        columns:
+          - name: compte_id
+            tests: [unique, not_null]
+          - name: classe_id
+            tests:
+              - relationships:
+                  to: source('dwh', 'dim_classe_compte')
+                  field: classe_id
+                  config:
+                    severity: warn
+      - name: dim_classe_compte
+      - name: dim_etape
+      - name: dim_motif_cloture
+      - name: dim_statut_opportunite
+        columns:
+          - name: statut_id
+            tests: [unique, not_null]
+      - name: fait_facturation
+        columns:
+          - name: ligne_facture_id
+            tests: [unique, not_null]
+          - name: date_facture_id
+            tests:
+              - not_null
+              - relationships:
+                  to: source('dwh', 'dim_date')
+                  field: date_id
+          - name: tiers_id
+            tests:
+              - not_null
+              - relationships:
+                  to: source('dwh', 'dim_tiers')
+                  field: tiers_id
+          - name: service_id
+            tests:
+              - relationships:
+                  to: source('dwh', 'dim_service')
+                  field: service_id
+          - name: type_facture
+            tests:
+              - accepted_values:
+                  values: ["FAC", "AVO"]
+      - name: fait_marge
+        columns:
+          - name: ecriture_id
+            tests: [unique, not_null]
+          - name: compte_id
+            tests:
+              - not_null
+              - relationships:
+                  to: source('dwh', 'dim_compte')
+                  field: compte_id
+          - name: domaine_id
+            tests:
+              - not_null
+              - relationships:
+                  to: source('dwh', 'dim_domaine')
+                  field: domaine_id
+      - name: fait_echeance
+        columns:
+          - name: echeance_id
+            tests: [unique, not_null]
+          - name: tiers_id
+            tests:
+              - not_null
+              - relationships:
+                  to: source('dwh', 'dim_tiers')
+                  field: tiers_id
+          - name: sens
+            tests:
+              - accepted_values:
+                  values: ["créance", "dette"]
+      - name: fait_opportunite
+        columns:
+          - name: opportunite_photo_id
+            tests: [unique, not_null]
+          - name: statut_id
+            tests:
+              - not_null
+              - relationships:
+                  to: source('dwh', 'dim_statut_opportunite')
+                  field: statut_id

@@ -1,0 +1,225 @@
+services:
+  postgres:
+    image: postgres:16
+    environment:
+      POSTGRES_DB: entrepot
+      POSTGRES_USER: ${PG_UTILISATEUR:-entrepot}
+      POSTGRES_PASSWORD: ${PG_MOT_DE_PASSE:?définir PG_MOT_DE_PASSE dans .env}
+    ports:
+      - "127.0.0.1:5442:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ./db/00_bases.sql:/docker-entrypoint-initdb.d/00_bases.sql:ro
+      - ./db/01_schema.sql:/docker-entrypoint-initdb.d/01_schema.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${PG_UTILISATEUR:-entrepot} -d entrepot"]
+      interval: 5s
+      retries: 10
+
+  kafka:
+    image: apache/kafka:3.9.0
+    environment:
+      KAFKA_NODE_ID: 1
+      KAFKA_PROCESS_ROLES: broker,controller
+      KAFKA_CONTROLLER_QUORUM_VOTERS: 1@kafka:9093
+      KAFKA_LISTENERS: INTERNE://:9092,EXTERNE://:9094,CONTROLLER://:9093
+      KAFKA_ADVERTISED_LISTENERS: INTERNE://kafka:9092,EXTERNE://localhost:9094
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: INTERNE:PLAINTEXT,EXTERNE:PLAINTEXT,CONTROLLER:PLAINTEXT
+      KAFKA_INTER_BROKER_LISTENER_NAME: INTERNE
+      KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
+      KAFKA_HEAP_OPTS: -Xmx512m -Xms256m
+    ports:
+      - "127.0.0.1:9094:9094"
+    volumes:
+      - kafkadata:/var/lib/kafka/data
+
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile.api
+    environment:
+      API_CLE: ${API_CLE:?définir API_CLE dans .env}
+    ports:
+      - "127.0.0.1:8110:8110"
+    volumes:
+      - ./donnees_confidentielles:/app/donnees_confidentielles:ro
+
+  spark:
+    build:
+      context: .
+      dockerfile: Dockerfile.spark
+    profiles: ["traitement"]
+    env_file: .env
+    environment:
+      PG_HOTE: postgres
+      PG_PORT: "5432"
+      KAFKA_SERVEURS: kafka:9092
+      SERVICE: pyspark
+      JOURNAL_FICHIER: /app/journaux/pyspark.jsonl
+    depends_on:
+      postgres:
+        condition: service_healthy
+    volumes:
+      - ./src:/app/src:ro
+      - ./data:/app/data
+      - ./db:/app/db:ro
+      - ./journaux:/app/journaux
+
+  dbt:
+    build:
+      context: .
+      dockerfile: Dockerfile.dbt
+    profiles: ["traitement"]
+    env_file: .env
+    environment:
+      PG_HOTE: postgres
+      PG_PORT: "5432"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    volumes:
+      - ./dbt:/app/dbt
+
+  score:
+    build:
+      context: .
+      dockerfile: Dockerfile.score
+    env_file: .env
+    environment:
+      PG_HOTE: postgres
+      PG_PORT: "5432"
+      PG_BASE: ${PG_BASE_SCORE:-entrepot_demo}
+      CHEMIN_MODELE: /app/models/arbre_risque.pkl
+    depends_on:
+      postgres:
+        condition: service_healthy
+    ports:
+      - "127.0.0.1:8120:8120"
+    volumes:
+      - ./models:/app/models:ro
+
+  web:
+    build:
+      context: .
+      dockerfile: Dockerfile.web
+    env_file: .env
+    environment:
+      MODE_DEMO: ${MODE_DEMO:-1}
+      PG_HOTE: postgres
+      PG_PORT: "5432"
+      API_SCORE_URL: http://score:8120
+    depends_on:
+      postgres:
+        condition: service_healthy
+      score:
+        condition: service_started
+    ports:
+      - "127.0.0.1:3100:3100"
+
+  score-demo:
+    build:
+      context: .
+      dockerfile: Dockerfile.score
+    profiles: ["demo"]
+    env_file: .env
+    environment:
+      PG_HOTE: postgres
+      PG_PORT: "5432"
+      PG_BASE: entrepot_demo
+      CHEMIN_MODELE: /app/models/arbre_risque.pkl
+      REGISTRE_MODELES: /app/models/registre_demo
+      SERVICE: api-score-demo
+    depends_on:
+      postgres:
+        condition: service_healthy
+    ports:
+      - "127.0.0.1:8121:8120"
+    volumes:
+      - ./models:/app/models:ro
+
+  web-demo:
+    build:
+      context: .
+      dockerfile: Dockerfile.web
+    profiles: ["demo"]
+    env_file: .env
+    environment:
+      MODE_DEMO: "1"
+      DATE_DECALAGE_MOIS: "12"
+      DASHBOARD_UTILISATEUR: ""
+      DASHBOARD_MOT_DE_PASSE: ""
+      PG_HOTE: postgres
+      PG_PORT: "5432"
+      API_SCORE_URL: http://score-demo:8120
+    depends_on:
+      postgres:
+        condition: service_healthy
+      score-demo:
+        condition: service_started
+    ports:
+      - "127.0.0.1:3101:3100"
+
+  prometheus:
+    image: prom/prometheus:v2.55.1
+    profiles: ["observabilite"]
+    volumes:
+      - ./observabilite/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ./observabilite/alertes.yml:/etc/prometheus/alertes.yml:ro
+      - prometheusdata:/prometheus
+    ports:
+      - "127.0.0.1:9190:9090"
+    mem_limit: 256m
+
+  loki:
+    image: grafana/loki:3.3.2
+    profiles: ["observabilite"]
+    command: ["-config.file=/etc/loki/loki.yml"]
+    volumes:
+      - ./observabilite/loki.yml:/etc/loki/loki.yml:ro
+      - lokidata:/loki
+    mem_limit: 384m
+
+  promtail:
+    image: grafana/promtail:3.3.2
+    profiles: ["observabilite"]
+    command: ["-config.file=/etc/promtail/promtail.yml"]
+    volumes:
+      - ./observabilite/promtail.yml:/etc/promtail/promtail.yml:ro
+      - ./journaux:/journaux:ro
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    depends_on:
+      - loki
+    mem_limit: 128m
+
+  grafana:
+    image: grafana/grafana-oss:11.4.0
+    profiles: ["observabilite"]
+    environment:
+      GF_SECURITY_ADMIN_USER: admin
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_MOT_DE_PASSE:?définir GRAFANA_MOT_DE_PASSE dans .env}
+      GF_USERS_ALLOW_SIGN_UP: "false"
+      GF_ANALYTICS_REPORTING_ENABLED: "false"
+      GF_ANALYTICS_CHECK_FOR_UPDATES: "false"
+      GF_DASHBOARDS_DEFAULT_HOME_DASHBOARD_PATH: /var/lib/grafana/tableaux/pipeline.json
+      PG_UTILISATEUR: ${PG_UTILISATEUR:-entrepot}
+      PG_MOT_DE_PASSE: ${PG_MOT_DE_PASSE:?définir PG_MOT_DE_PASSE dans .env}
+    volumes:
+      - ./observabilite/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./observabilite/grafana/tableaux:/var/lib/grafana/tableaux:ro
+      - grafanadata:/var/lib/grafana
+    ports:
+      - "127.0.0.1:3200:3000"
+    depends_on:
+      - prometheus
+      - loki
+    mem_limit: 384m
+
+volumes:
+  prometheusdata:
+  lokidata:
+  grafanadata:
+  pgdata:
+  kafkadata:

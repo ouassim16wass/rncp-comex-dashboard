@@ -1,0 +1,172 @@
+# Contrat de données : échéances Sage (factures clients et factures fournisseurs)
+# Deux extractions, un seul fait : fait_echeance (une pièce ouverte à une date de photo).
+contrat:
+  nom: "sage_echeances"
+  version: "1.0"
+  source: "Sage (API)"
+  proprietaire: "Direction administrative et financière (rôle)"
+  finalite: "Suivre les créances clients et les dettes fournisseurs échues pour la trésorerie."
+  base_legale: "Intérêt légitime : pilotage de la performance (à valider avec le DPO)"
+  conservation: "À définir avec le DPO"
+  frequence: "Hebdomadaire à terme, mensuelle aujourd'hui"
+  grain: "Une pièce ouverte à une date de photo"
+  table_cible: "fait_echeance"
+
+entree:
+  acquisition: "API. Pendant le développement, un simulateur d'API rejoue les extractions Excel fournies par l'entreprise."
+  format_extraction_reference: "xlsx"
+  fichiers: "factures clients *.xlsx (créances), factures fournisseurs *.xlsx (dettes)"
+  feuille: "première feuille"
+  regle_extraction: "Chaque fichier est une photo de l'impayé. La date de photo n'est pas dans le fichier : elle vient de la date d'extraction fournie au chargement. On garde toutes les photos pour suivre l'évolution."
+  lignes_de_fin_ignorees: {"factures fournisseurs": 1}
+  formats_acceptes: "Factures clients : 5 colonnes (version d'octobre). Factures fournisseurs : 13 colonnes. Les formats plus anciens ne sont pas chargés."
+
+colonnes:
+  # ---- factures clients (créances) ----
+  - source: "Client"
+    fichier: "factures clients"
+    entrepot: "dim_tiers.code_sage"
+    type: "texte"
+    obligatoire: true
+    description: "Code du client dans Sage. Même code que le champ Tiers du CA facturé (retrouvé à 98 %)."
+    sensibilite: "confidentiel"
+    regle: "Rattaché à dim_tiers."
+    controles: {non_nul: true, gravite: "erreur"}
+
+  - source: "Lib. Client"
+    fichier: "factures clients"
+    entrepot: "dim_tiers.raison_sociale_pseudo"
+    type: "texte"
+    obligatoire: true
+    description: "Nom du client."
+    sensibilite: "confidentiel"
+    regle: "Pseudonymisé dans le jeu de démonstration."
+    controles: {non_nul: true, gravite: "erreur"}
+
+  - source: "Date Ech."
+    fichier: "factures clients"
+    entrepot: "fait_echeance.date_echeance_id"
+    type: "date"
+    obligatoire: true
+    description: "Date d'échéance de la pièce."
+    sensibilite: "interne"
+    regle: "Convertie en identifiant de date. Sert à calculer le retard."
+    controles: {non_nul: true, gravite: "erreur"}
+
+  - source: "Solde"
+    fichier: "factures clients"
+    entrepot: "fait_echeance.solde"
+    type: "décimal"
+    obligatoire: true
+    description: "Solde restant dû sur la pièce, en euros. Quelques soldes sont négatifs (avoirs ou règlements non affectés)."
+    sensibilite: "confidentiel"
+    regle: "Multiplié par un coefficient secret dans le jeu de démonstration."
+    controles: {non_nul: true, gravite: "erreur"}
+
+  - source: "Groupe/HG"
+    fichier: "factures clients"
+    entrepot: "dim_segment.libelle"
+    type: "texte"
+    obligatoire: true
+    description: "Segment du client : GROUPE, HORS GROUPE, PUBLIC ou DOUTEUX (client à risque d'impayé)."
+    sensibilite: "confidentiel"
+    regle: "Normalisé en Groupe, Hors groupe, Public, Douteux."
+    controles: {valeurs: ["GROUPE", "HORS GROUPE", "PUBLIC", "DOUTEUX"], gravite: "erreur"}
+
+  # ---- factures fournisseurs (dettes) ----
+  - source: "Tiers"
+    fichier: "factures fournisseurs"
+    entrepot: "dim_tiers.code_sage"
+    type: "texte"
+    obligatoire: true
+    description: "Code du fournisseur dans Sage."
+    sensibilite: "confidentiel"
+    regle: "Rattaché à dim_tiers avec le type fournisseur."
+    controles: {non_nul: true, gravite: "erreur"}
+
+  - source: "Colonne1"
+    fichier: "factures fournisseurs"
+    entrepot: "fait_echeance.type_piece"
+    type: "texte"
+    obligatoire: true
+    description: "Type de pièce Sage : FAF facture fournisseur, AVF avoir fournisseur, DEC, BQE, OD, ENC."
+    sensibilite: "interne"
+    regle: "Renommée type_piece."
+    controles: {non_nul: true, gravite: "avertissement"}
+
+  - source: "Référence"
+    fichier: "factures fournisseurs"
+    entrepot: "fait_echeance.reference_piece"
+    type: "texte"
+    obligatoire: false
+    description: "Référence de la pièce fournisseur. Absente de l'extraction clients."
+    sensibilite: "interne"
+    regle: "Conservée telle quelle."
+
+  - source: "Echéance"
+    fichier: "factures fournisseurs"
+    entrepot: "fait_echeance.date_echeance_id"
+    type: "date"
+    obligatoire: true
+    description: "Date d'échéance de la pièce fournisseur."
+    sensibilite: "interne"
+    regle: "Convertie en identifiant de date."
+    controles: {non_nul: true, gravite: "avertissement"}
+
+  - source: "Solde total"
+    fichier: "factures fournisseurs"
+    entrepot: "fait_echeance.solde"
+    type: "décimal"
+    obligatoire: true
+    description: "Solde restant à payer sur la pièce."
+    sensibilite: "confidentiel"
+    regle: "Multiplié par un coefficient secret dans le jeu de démonstration."
+    controles: {non_nul: true, gravite: "erreur"}
+
+  - source: "Solde échu"
+    fichier: "factures fournisseurs"
+    entrepot: "controle.solde_echu_source"
+    type: "décimal"
+    obligatoire: false
+    description: "Part échue du solde calculée par Sage. Sert de contrôle du calcul de retard de l'entrepôt ; ce n'est pas une donnée chargée."
+    sensibilite: "confidentiel"
+    regle: "Comparé à la valeur recalculée par l'entrepôt."
+
+colonnes_derivees:
+  - entrepot: "fait_echeance.date_photo_id"
+    type: "date"
+    description: "Date à laquelle l'extraction a été faite."
+    sensibilite: "interne"
+    regle: "Fournie au chargement, absente des fichiers."
+  - entrepot: "fait_echeance.sens"
+    type: "texte"
+    description: "créance (somme due par un client) ou dette (somme due à un fournisseur)."
+    sensibilite: "interne"
+    regle: "créance pour le fichier clients, dette pour le fichier fournisseurs."
+  - entrepot: "fait_echeance.jours_retard"
+    type: "entier"
+    description: "Nombre de jours entre la date d'échéance et la date de photo. Positif ou nul si la pièce est échue."
+    sensibilite: "interne"
+    regle: "date_photo moins date_echeance."
+  - entrepot: "fait_echeance.tranche_retard"
+    type: "texte"
+    description: "Tranche d'ancienneté du retard : non échu, moins de 15 jours, 15 à 30 jours, plus de 30 jours."
+    sensibilite: "interne"
+    regle: "Calculée à partir de jours_retard (les colonnes d'ancienneté des extractions sont ignorées)."
+
+regles_table:
+  - id: "E01"
+    description: "Les clients des échéances doivent exister dans le CA facturé (retrouvés à 98 %)."
+    gravite: "avertissement"
+  - id: "E02"
+    description: "Une pièce qui disparaît entre deux photos est considérée comme soldée. La date de règlement n'est pas connue."
+    gravite: "information"
+  - id: "E04"
+    description: "La dernière ligne de l'extraction fournisseurs est une ligne de total (son solde égale la somme des autres) : elle est ignorée, sinon les dettes seraient comptées deux fois."
+    gravite: "erreur"
+  - id: "E03"
+    description: "Le solde échu recalculé doit correspondre au solde échu de Sage pour les fournisseurs."
+    gravite: "avertissement"
+
+qualite_globale:
+  taux_rejet_max: 0.01

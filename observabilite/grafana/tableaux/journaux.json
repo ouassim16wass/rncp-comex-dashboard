@@ -1,0 +1,215 @@
+{
+ "uid": "journaux",
+ "title": "Journaux applicatifs",
+ "schemaVersion": 39,
+ "version": 1,
+ "editable": false,
+ "refresh": "30s",
+ "time": {
+  "from": "now-24h",
+  "to": "now"
+ },
+ "timezone": "browser",
+ "tags": [
+  "entreprise"
+ ],
+ "templating": {
+  "list": [
+   {
+    "name": "service",
+    "label": "Service",
+    "type": "query",
+    "datasource": {
+     "type": "loki",
+     "uid": "loki"
+    },
+    "query": {
+     "label": "service",
+     "refId": "variable",
+     "type": 1
+    },
+    "includeAll": true,
+    "allValue": ".+",
+    "current": {
+     "text": "Tous",
+     "value": "$__all"
+    },
+    "multi": false,
+    "refresh": 2
+   },
+   {
+    "name": "niveau",
+    "label": "Niveau",
+    "type": "custom",
+    "query": "info,warning,error",
+    "includeAll": true,
+    "allValue": ".+",
+    "current": {
+     "text": "Tous",
+     "value": "$__all"
+    },
+    "multi": false
+   }
+  ]
+ },
+ "panels": [
+  {
+   "id": 1,
+   "title": "Volume de journaux par niveau",
+   "description": "",
+   "type": "timeseries",
+   "datasource": {
+    "type": "loki",
+    "uid": "loki"
+   },
+   "targets": [
+    {
+     "datasource": {
+      "type": "loki",
+      "uid": "loki"
+     },
+     "refId": "A",
+     "expr": "sum by (niveau) (count_over_time({service=~\"$service\", niveau=~\"$niveau\"}[1m]))",
+     "legendFormat": "{{niveau}}"
+    }
+   ],
+   "gridPos": {
+    "x": 0,
+    "y": 0,
+    "w": 12,
+    "h": 8
+   },
+   "options": {},
+   "fieldConfig": {
+    "defaults": {
+     "custom": {
+      "drawStyle": "bars",
+      "stacking": {
+       "mode": "normal"
+      }
+     }
+    },
+    "overrides": []
+   }
+  },
+  {
+   "id": 2,
+   "title": "Erreurs et avertissements",
+   "description": "",
+   "type": "stat",
+   "datasource": {
+    "type": "loki",
+    "uid": "loki"
+   },
+   "targets": [
+    {
+     "datasource": {
+      "type": "loki",
+      "uid": "loki"
+     },
+     "refId": "A",
+     "expr": "sum(count_over_time({service=~\"$service\", niveau=~\"warning|error\"}[$__range]))"
+    }
+   ],
+   "gridPos": {
+    "x": 12,
+    "y": 0,
+    "w": 6,
+    "h": 8
+   },
+   "options": {},
+   "fieldConfig": {
+    "defaults": {
+     "thresholds": {
+      "mode": "absolute",
+      "steps": [
+       {
+        "color": "green",
+        "value": null
+       },
+       {
+        "color": "orange",
+        "value": 1
+       },
+       {
+        "color": "red",
+        "value": 20
+       }
+      ]
+     }
+    },
+    "overrides": []
+   }
+  },
+  {
+   "id": 3,
+   "title": "Événements les plus fréquents",
+   "description": "",
+   "type": "bargauge",
+   "datasource": {
+    "type": "loki",
+    "uid": "loki"
+   },
+   "targets": [
+    {
+     "datasource": {
+      "type": "loki",
+      "uid": "loki"
+     },
+     "refId": "A",
+     "expr": "topk(8, sum by (evenement) (count_over_time({service=~\"$service\"} | json [$__range])))",
+     "legendFormat": "{{evenement}}"
+    }
+   ],
+   "gridPos": {
+    "x": 18,
+    "y": 0,
+    "w": 6,
+    "h": 8
+   },
+   "options": {
+    "orientation": "horizontal"
+   },
+   "fieldConfig": {
+    "defaults": {},
+    "overrides": []
+   }
+  },
+  {
+   "id": 4,
+   "title": "Journaux",
+   "description": "",
+   "type": "logs",
+   "datasource": {
+    "type": "loki",
+    "uid": "loki"
+   },
+   "targets": [
+    {
+     "datasource": {
+      "type": "loki",
+      "uid": "loki"
+     },
+     "refId": "A",
+     "expr": "{service=~\"$service\", niveau=~\"$niveau\"}"
+    }
+   ],
+   "gridPos": {
+    "x": 0,
+    "y": 8,
+    "w": 24,
+    "h": 16
+   },
+   "options": {
+    "showTime": true,
+    "wrapLogMessage": true,
+    "enableLogDetails": true,
+    "sortOrder": "Descending"
+   },
+   "fieldConfig": {
+    "defaults": {},
+    "overrides": []
+   }
+  }
+ ]
+}

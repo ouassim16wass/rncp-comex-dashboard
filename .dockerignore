@@ -1,0 +1,7 @@
+donnees_confidentielles/
+data/raw/
+.venv/
+.git/
+.env
+docs/
+notebooks/

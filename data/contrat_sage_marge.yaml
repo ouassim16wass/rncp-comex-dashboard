@@ -1,0 +1,145 @@
+# Contrat de données : écritures comptables Sage (marge brute)
+contrat:
+  nom: "sage_marge_brute"
+  version: "1.0"
+  source: "Sage (API)"
+  proprietaire: "Direction administrative et financière (rôle)"
+  finalite: "Calculer la marge brute par domaine et par mois : produits moins charges directes."
+  base_legale: "Intérêt légitime : pilotage de la performance (à valider avec le DPO)"
+  conservation: "À définir avec le DPO"
+  frequence: "Mensuelle, à l'arrêté comptable (vers le 30)"
+  grain: "Une écriture comptable"
+  table_cible: "fait_marge"
+
+entree:
+  acquisition: "API. Pendant le développement, un simulateur d'API rejoue les extractions Excel fournies par l'entreprise."
+  format_extraction_reference: "xlsx"
+  fichiers: "marge brute *.xlsx, marge-brute *.xlsx"
+  feuille: "première feuille"
+  regle_extraction: "Chaque extraction remplace la précédente. Les lignes vides de l'export sont ignorées."
+  lignes_vides: "ignorées"
+
+colonnes:
+  - source: "Type de pièce"
+    entrepot: "fait_marge.type_piece"
+    type: "texte"
+    obligatoire: true
+    description: "Code Sage du type de pièce comptable (facture, avoir, paiement, opération diverse…)."
+    sensibilite: "interne"
+    regle: "Conservé tel quel."
+    controles: {non_nul: true, gravite: "erreur"}
+
+  - source: "Numéro de pièce"
+    entrepot: "fait_marge.numero_piece"
+    type: "texte"
+    obligatoire: true
+    description: "Numéro de la pièce comptable."
+    sensibilite: "interne"
+    regle: "Conservé tel quel."
+    controles: {non_nul: true, gravite: "erreur"}
+
+  - source: "Comptes généraux"
+    entrepot: "dim_compte.compte_general"
+    type: "entier"
+    obligatoire: true
+    description: "Compte comptable. Les comptes 70 sont les produits, les comptes 60 à 69 les charges."
+    sensibilite: "interne"
+    regle: "Rattaché à dim_compte et à sa classe."
+    controles: {min: 600000, max: 769999, gravite: "erreur"}
+
+  - source: "LIB 1"
+    entrepot: "dim_classe_compte.libelle"
+    type: "texte"
+    obligatoire: true
+    description: "Grande famille du compte : CA, achats, services extérieurs, charges de personnel, impôts…"
+    sensibilite: "interne"
+    regle: "Sert à distinguer produits et charges."
+    controles: {non_nul: true, gravite: "erreur"}
+
+  - source: "LIB 2"
+    entrepot: "dim_compte.famille_charge"
+    type: "texte"
+    obligatoire: true
+    description: "Famille détaillée du compte : CA production, CA négoce, sous-traitance, loyers…"
+    sensibilite: "interne"
+    regle: "Sert à isoler le négoce (CA NEGOCE, ACHATS NEGOCE)."
+    controles: {non_nul: true, gravite: "erreur"}
+
+  - source: "Section analytique"
+    entrepot: "fait_marge.section_analytique"
+    type: "entier"
+    obligatoire: true
+    description: "Code de la section analytique. Elle détermine le domaine quand celui-ci est renseigné."
+    sensibilite: "interne"
+    regle: "Conservée. Elle servira au budget par direction dans une version ultérieure."
+    controles: {non_nul: true, gravite: "avertissement"}
+
+  - source: "Domaine"
+    entrepot: "dim_domaine.domaine"
+    type: "texte"
+    obligatoire: false
+    description: "Domaine d'activité (D1 à D4). Manquant sur environ 10 % des écritures."
+    sensibilite: "interne"
+    regle: "Quand il est vide, l'écriture est rattachée à « non affecté »."
+    controles: {valeurs: ["D1", "D2", "D3", "D4", "HD"], gravite: "avertissement"}
+
+  - source: "Build/Run"
+    entrepot: "fait_marge.build_run"
+    type: "texte"
+    obligatoire: false
+    description: "BUILD, RUN ou PRODUCTION. La valeur PRODUCTION n'existe pas dans le CA facturé : correspondance à confirmer."
+    sensibilite: "interne"
+    regle: "Conservé tel quel."
+    controles: {valeurs: ["BUILD", "RUN", "PRODUCTION"], gravite: "avertissement"}
+
+  - source: "Date comptable"
+    entrepot: "fait_marge.date_comptable_id"
+    type: "date"
+    obligatoire: true
+    description: "Date de l'écriture comptable."
+    sensibilite: "interne"
+    regle: "Convertie en identifiant de date (dim_date)."
+    controles: {non_nul: true, gravite: "erreur"}
+
+  - source: "Montant"
+    entrepot: "fait_marge.montant_signe"
+    type: "décimal"
+    obligatoire: true
+    description: "Montant de l'écriture, signé : les produits sont en crédit (négatif) et les charges en débit (positif)."
+    sensibilite: "confidentiel"
+    regle: "Multiplié par un coefficient secret dans le jeu de démonstration."
+    controles: {non_nul: true, gravite: "erreur"}
+
+  - source: "Tiers Client / Fournisseur"
+    entrepot: "dim_tiers.code_sage"
+    type: "texte"
+    obligatoire: false
+    description: "Code du client ou du fournisseur. Renseigné sur environ un tiers des écritures seulement."
+    sensibilite: "confidentiel"
+    regle: "Rattaché à dim_tiers par le code Sage."
+
+colonnes_derivees:
+  - entrepot: "dim_classe_compte.est_produit"
+    type: "booléen"
+    description: "Vrai si le compte est un compte de produit (classe 70)."
+    sensibilite: "interne"
+    regle: "Vrai quand le compte général commence par 70."
+  - entrepot: "dim_classe_compte.est_negoce"
+    type: "booléen"
+    description: "Vrai si le compte relève du négoce (CA NEGOCE ou ACHATS NEGOCE)."
+    sensibilite: "interne"
+    regle: "Vrai quand au moins un compte de la classe a un LIB 2 de négoce (CA NEGOCE, ACHATS NEGOCE)."
+
+regles_table:
+  - id: "M01"
+    description: "Le montant signé est égal au sens multiplié par le montant de référence (vérifié à 100 % sur les extractions reçues)."
+    gravite: "information"
+  - id: "M02"
+    description: "Les produits comptables et le CA facturé doivent rester proches par mois (écart observé de moins 20 % à plus 24 %). Test de rapprochement, pas de rejet."
+    gravite: "avertissement"
+  - id: "M03"
+    description: "Définition des charges directes de la marge brute à confirmer par la direction financière."
+    gravite: "information"
+
+qualite_globale:
+  taux_rejet_max: 0.01

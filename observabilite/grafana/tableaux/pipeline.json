@@ -1,0 +1,306 @@
+{
+ "uid": "pipeline-donnees",
+ "title": "Pipeline de données",
+ "schemaVersion": 39,
+ "version": 1,
+ "editable": false,
+ "refresh": "30s",
+ "time": {
+  "from": "now-24h",
+  "to": "now"
+ },
+ "timezone": "browser",
+ "tags": [
+  "entreprise"
+ ],
+ "templating": {
+  "list": []
+ },
+ "panels": [
+  {
+   "id": 1,
+   "title": "Dernier chargement de chaque source",
+   "description": "Une ligne par chargement : la dernière exécution de chaque job PySpark.",
+   "type": "table",
+   "datasource": {
+    "type": "grafana-postgresql-datasource",
+    "uid": "supervision"
+   },
+   "targets": [
+    {
+     "datasource": {
+      "type": "grafana-postgresql-datasource",
+      "uid": "supervision"
+     },
+     "refId": "A",
+     "rawQuery": true,
+     "editorMode": "code",
+     "format": "table",
+     "rawSql": "SELECT DISTINCT ON (etape) etape AS \"Étape\", source AS \"Source\", to_char(debut, 'YYYY-MM-DD HH24:MI') AS \"Date\", statut AS \"Statut\", lignes_lues AS \"Lues\", lignes_chargees AS \"Chargées\", lignes_rejetees AS \"Rejetées\", taux_rejet AS \"Taux de rejet\", duree_s AS \"Durée (s)\" FROM supervision.execution ORDER BY etape, execution_id DESC"
+    }
+   ],
+   "gridPos": {
+    "x": 0,
+    "y": 0,
+    "w": 24,
+    "h": 8
+   },
+   "options": {},
+   "fieldConfig": {
+    "defaults": {
+     "custom": {
+      "align": "auto"
+     }
+    },
+    "overrides": []
+   }
+  },
+  {
+   "id": 2,
+   "title": "Taux de rejet par exécution",
+   "description": "Un chargement est refusé au-delà de 1 % de lignes rejetées.",
+   "type": "timeseries",
+   "datasource": {
+    "type": "grafana-postgresql-datasource",
+    "uid": "supervision"
+   },
+   "targets": [
+    {
+     "datasource": {
+      "type": "grafana-postgresql-datasource",
+      "uid": "supervision"
+     },
+     "refId": "A",
+     "rawQuery": true,
+     "editorMode": "code",
+     "format": "time_series",
+     "rawSql": "SELECT debut AS time, etape AS metric, taux_rejet AS value FROM supervision.execution WHERE $__timeFilter(debut) ORDER BY 1"
+    }
+   ],
+   "gridPos": {
+    "x": 0,
+    "y": 8,
+    "w": 12,
+    "h": 8
+   },
+   "options": {},
+   "fieldConfig": {
+    "defaults": {
+     "unit": "percentunit",
+     "max": 0.02,
+     "min": 0,
+     "thresholds": {
+      "mode": "absolute",
+      "steps": [
+       {
+        "color": "green",
+        "value": null
+       },
+       {
+        "color": "orange",
+        "value": 0.005
+       },
+       {
+        "color": "red",
+        "value": 0.01
+       }
+      ]
+     },
+     "custom": {
+      "thresholdsStyle": {
+       "mode": "line"
+      }
+     }
+    },
+    "overrides": []
+   }
+  },
+  {
+   "id": 3,
+   "title": "Durée des chargements",
+   "description": "",
+   "type": "timeseries",
+   "datasource": {
+    "type": "grafana-postgresql-datasource",
+    "uid": "supervision"
+   },
+   "targets": [
+    {
+     "datasource": {
+      "type": "grafana-postgresql-datasource",
+      "uid": "supervision"
+     },
+     "refId": "A",
+     "rawQuery": true,
+     "editorMode": "code",
+     "format": "time_series",
+     "rawSql": "SELECT debut AS time, etape AS metric, duree_s AS value FROM supervision.execution WHERE $__timeFilter(debut) ORDER BY 1"
+    }
+   ],
+   "gridPos": {
+    "x": 12,
+    "y": 8,
+    "w": 12,
+    "h": 8
+   },
+   "options": {},
+   "fieldConfig": {
+    "defaults": {
+     "unit": "s"
+    },
+    "overrides": []
+   }
+  },
+  {
+   "id": 4,
+   "title": "Rapprochement des montants",
+   "description": "L'écart entre le staging et l'entrepôt doit valoir 0,00.",
+   "type": "table",
+   "datasource": {
+    "type": "grafana-postgresql-datasource",
+    "uid": "supervision"
+   },
+   "targets": [
+    {
+     "datasource": {
+      "type": "grafana-postgresql-datasource",
+      "uid": "supervision"
+     },
+     "refId": "A",
+     "rawQuery": true,
+     "editorMode": "code",
+     "format": "table",
+     "rawSql": "SELECT DISTINCT ON (etape) etape AS \"Étape\", mesure_controlee AS \"Mesure\", somme_brute AS \"Extraction\", somme_brute - somme_staging AS \"Rejeté\", somme_staging AS \"Staging\", somme_entrepot AS \"Entrepôt\", round(somme_staging - somme_entrepot, 2) AS \"Écart entrepôt\" FROM supervision.execution WHERE somme_brute IS NOT NULL ORDER BY etape, execution_id DESC"
+    }
+   ],
+   "gridPos": {
+    "x": 0,
+    "y": 16,
+    "w": 16,
+    "h": 8
+   },
+   "options": {},
+   "fieldConfig": {
+    "defaults": {},
+    "overrides": []
+   }
+  },
+  {
+   "id": 5,
+   "title": "Chargements en échec (24 h)",
+   "description": "",
+   "type": "stat",
+   "datasource": {
+    "type": "grafana-postgresql-datasource",
+    "uid": "supervision"
+   },
+   "targets": [
+    {
+     "datasource": {
+      "type": "grafana-postgresql-datasource",
+      "uid": "supervision"
+     },
+     "refId": "A",
+     "rawQuery": true,
+     "editorMode": "code",
+     "format": "table",
+     "rawSql": "SELECT count(*) AS value FROM supervision.execution WHERE statut = 'echec' AND debut > now() - interval '24 hours'"
+    }
+   ],
+   "gridPos": {
+    "x": 16,
+    "y": 16,
+    "w": 4,
+    "h": 4
+   },
+   "options": {},
+   "fieldConfig": {
+    "defaults": {
+     "thresholds": {
+      "mode": "absolute",
+      "steps": [
+       {
+        "color": "green",
+        "value": null
+       },
+       {
+        "color": "red",
+        "value": 1
+       }
+      ]
+     }
+    },
+    "overrides": []
+   }
+  },
+  {
+   "id": 6,
+   "title": "Lignes rejetées (24 h)",
+   "description": "",
+   "type": "stat",
+   "datasource": {
+    "type": "grafana-postgresql-datasource",
+    "uid": "supervision"
+   },
+   "targets": [
+    {
+     "datasource": {
+      "type": "grafana-postgresql-datasource",
+      "uid": "supervision"
+     },
+     "refId": "A",
+     "rawQuery": true,
+     "editorMode": "code",
+     "format": "table",
+     "rawSql": "SELECT coalesce(sum(lignes_rejetees), 0) AS value FROM supervision.execution WHERE debut > now() - interval '24 hours'"
+    }
+   ],
+   "gridPos": {
+    "x": 20,
+    "y": 16,
+    "w": 4,
+    "h": 4
+   },
+   "options": {},
+   "fieldConfig": {
+    "defaults": {},
+    "overrides": []
+   }
+  },
+  {
+   "id": 7,
+   "title": "Journal des traitements",
+   "description": "",
+   "type": "logs",
+   "datasource": {
+    "type": "loki",
+    "uid": "loki"
+   },
+   "targets": [
+    {
+     "datasource": {
+      "type": "loki",
+      "uid": "loki"
+     },
+     "refId": "A",
+     "expr": "{conteneur=~\"spark|dbt\"} | json"
+    }
+   ],
+   "gridPos": {
+    "x": 0,
+    "y": 24,
+    "w": 24,
+    "h": 9
+   },
+   "options": {
+    "showTime": true,
+    "wrapLogMessage": true,
+    "sortOrder": "Descending"
+   },
+   "fieldConfig": {
+    "defaults": {},
+    "overrides": []
+   }
+  }
+ ]
+}

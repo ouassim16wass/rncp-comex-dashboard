@@ -1,0 +1,117 @@
+# Contrat de données : tickets iTop
+# Les tickets ne sont pas un fait de l'entrepôt : ils servent de variables au modèle de risque client.
+contrat:
+  nom: "itop_tickets"
+  version: "1.0"
+  source: "iTop (API REST)"
+  proprietaire: "Direction des systèmes d'information (rôle)"
+  finalite: "Compter les incidents par client et mesurer le respect des délais, comme variables explicatives du risque client."
+  base_legale: "Intérêt légitime : pilotage de la performance (à valider avec le DPO)"
+  conservation: "À définir avec le DPO"
+  frequence: "Hebdomadaire à terme"
+  grain: "Un ticket"
+  table_cible: "stg_tickets"
+
+entree:
+  acquisition: "API. Pendant le développement, un simulateur d'API rejoue les extractions Excel fournies par l'entreprise."
+  format_extraction_reference: "xlsx"
+  fichiers: "tickets iTop *.xlsx"
+  feuille: "première feuille"
+  regle_extraction: "Les échéances sont en secondes depuis 1970 : elles ne sont pas chargées. Les agents, les noms de personnes, les titres et les produits sont volontairement exclus (données personnelles ou textes libres). Seule l'organisation du demandeur sert à retrouver le client."
+
+colonnes:
+  - source: "Référence"
+    entrepot: "stg_tickets.reference"
+    type: "texte"
+    obligatoire: true
+    description: "Référence du ticket iTop."
+    sensibilite: "interne"
+    regle: "Conservée telle quelle."
+    controles: {non_nul: true, unique: true, gravite: "erreur"}
+
+  - source: "Type"
+    entrepot: "stg_tickets.type"
+    type: "texte"
+    obligatoire: true
+    description: "incident ou demande. Seuls les incidents comptent dans les KPI."
+    sensibilite: "interne"
+    regle: "Conservé tel quel."
+    controles: {valeurs: ["incident", "demande"], gravite: "avertissement"}
+
+  - source: "Priorité"
+    entrepot: "stg_tickets.priorite"
+    type: "texte"
+    obligatoire: false
+    description: "Priorité du ticket, avec un suffixe interne ou client (Important Interne, Urgent Client…). Le suffixe indique probablement qui a ouvert le ticket (à confirmer)."
+    sensibilite: "interne"
+    regle: "Conservée telle quelle."
+
+  - source: "Etat"
+    entrepot: "stg_tickets.etat"
+    type: "texte"
+    obligatoire: false
+    description: "État du ticket : Fermée, Résolu, Affecté, Assigné, En attente, Réaffecté, Arbitrage."
+    sensibilite: "interne"
+    regle: "Conservé tel quel."
+
+  - source: "Demandeur->Nom organisation"
+    entrepot: "stg_tickets.code_sage"
+    type: "texte"
+    obligatoire: true
+    description: "Code Sage du client concerné par le ticket, retrouvé à partir de l'organisation du demandeur."
+    sensibilite: "confidentiel"
+    regle: "L'organisation est rapprochée du code Sage par la table de correspondance fournie par l'entreprise (organisation iTop, code Sage). Le nom de l'organisation n'est pas conservé. Sans correspondance, le code reste vide."
+    controles: {non_nul: true, gravite: "avertissement"}
+
+  - source: "Date de début"
+    entrepot: "stg_tickets.date_debut"
+    type: "date"
+    obligatoire: true
+    description: "Date de création du ticket."
+    sensibilite: "interne"
+    regle: "Conservée telle quelle."
+    controles: {non_nul: true, gravite: "erreur"}
+
+  - source: "Date de résolution"
+    entrepot: "stg_tickets.date_resolution"
+    type: "date"
+    obligatoire: false
+    description: "Date de résolution du ticket. Vide pour un ticket non résolu."
+    sensibilite: "interne"
+    regle: "Conservée telle quelle."
+
+  - source: "Niveau d'impact"
+    entrepot: "stg_tickets.impact"
+    type: "texte"
+    obligatoire: false
+    description: "Un collaborateur, plusieurs collaborateurs, un seul client ou plusieurs clients impactés."
+    sensibilite: "interne"
+    regle: "Conservé tel quel."
+
+  - source: "SLA TTR dépassé ?"
+    entrepot: "stg_tickets.sla_ttr_depasse"
+    type: "booléen"
+    obligatoire: true
+    description: "oui si le délai de résolution contractuel est dépassé (environ 9 % des tickets)."
+    sensibilite: "interne"
+    regle: "oui devient 1, non devient 0."
+    controles: {valeurs: ["oui", "non"], gravite: "erreur"}
+
+  - source: "Référence ticket Salesforce"
+    entrepot: "stg_tickets.reference_salesforce"
+    type: "entier"
+    obligatoire: false
+    description: "Référence du ticket Salesforce lié (environ 5,5 % des tickets). Sert à supprimer les doublons entre iTop et Salesforce."
+    sensibilite: "interne"
+    regle: "Conservée telle quelle."
+
+regles_table:
+  - id: "I01"
+    description: "Un incident lié à un ticket Salesforce est compté une seule fois dans les KPI d'incidents."
+    gravite: "information"
+  - id: "I02"
+    description: "Seuls les tickets de type incident sont retenus pour les variables du modèle de risque."
+    gravite: "information"
+
+qualite_globale:
+  taux_rejet_max: 0.01

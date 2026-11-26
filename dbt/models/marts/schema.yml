@@ -1,0 +1,48 @@
+version: 2
+
+models:
+  - name: mart_ca_mensuel
+    description: Chiffre d'affaires facturé par mois Sage, domaine et segment de client. Les lignes du service 990 sont exclues.
+    columns:
+      - name: periode
+        tests: [not_null]
+      - name: domaine
+        tests: [not_null]
+      - name: ca_ht
+        tests: [not_null]
+  - name: mart_marge_mensuelle
+    description: Produits, achats et marge brute par mois comptable et domaine. Le chiffre d'affaires est le produit des comptes de la classe 1, le signe comptable étant inversé.
+    columns:
+      - name: periode
+        tests: [not_null]
+  - name: mart_impayes
+    description: Créances et dettes ouvertes à chaque date de photo, par tranche de retard et segment.
+    columns:
+      - name: date_photo
+        tests: [not_null]
+      - name: sens
+        tests:
+          - accepted_values:
+              values: ["créance", "dette"]
+  - name: mart_pipeline
+    description: Opportunités commerciales à chaque date de photo, par domaine et étape.
+    columns:
+      - name: date_photo
+        tests: [not_null]
+  - name: mart_win_ratio
+    description: Taux de gain des opportunités clôturées, selon deux définitions (restreinte et large).
+    columns:
+      - name: date_photo
+        tests: [unique, not_null]
+  - name: mart_client_mensuel
+    description: Chiffre d'affaires et nombre de factures par client et par mois Sage. Base des variables du modèle de risque.
+    columns:
+      - name: tiers_id
+        tests: [not_null]
+      - name: periode
+        tests: [not_null]
+  - name: mart_sante_financiere
+    description: Vue centrale de la santé financière par mois, rapprochant le chiffre d'affaires facturé et le chiffre d'affaires comptable.
+    columns:
+      - name: periode
+        tests: [unique, not_null]

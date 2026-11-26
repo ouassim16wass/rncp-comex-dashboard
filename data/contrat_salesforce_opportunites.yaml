@@ -1,0 +1,126 @@
+# Contrat de données : opportunités Salesforce
+contrat:
+  nom: "salesforce_opportunites"
+  version: "1.0"
+  source: "Salesforce (API)"
+  proprietaire: "Direction commerciale (rôle)"
+  finalite: "Suivre le pipeline commercial, le taux de transformation et la préparation du CA futur."
+  base_legale: "Intérêt légitime : pilotage de la performance (à valider avec le DPO)"
+  conservation: "À définir avec le DPO"
+  frequence: "Hebdomadaire à terme"
+  grain: "Une opportunité à une date de photo"
+  table_cible: "fait_opportunite"
+
+entree:
+  acquisition: "API. Pendant le développement, un simulateur d'API rejoue les extractions Excel fournies par l'entreprise."
+  format_extraction_reference: "xlsx"
+  fichiers: "opportunites-*.xlsx"
+  feuille: "première feuille"
+  regle_extraction: "L'export commence par des lignes de titre et une ligne « Au AAAA-MM-JJ hh:mm:ss » qui donne la date de photo. L'en-tête est détectée automatiquement. Des colonnes n'ont pas de nom : elles sont ignorées."
+  lignes_vides: "ignorées"
+  lignes_de_fin_ignorees: 2
+  limite: "L'export ne contient aucune date de création ni de clôture : impossible de dater un gain ou de mesurer un délai de vente."
+
+colonnes:
+  - source: "Nom du compte"
+    entrepot: "dim_tiers.raison_sociale_pseudo"
+    type: "texte"
+    obligatoire: true
+    description: "Nom du compte client dans Salesforce. Il s'écrit parfois autrement que dans Sage : rapprochement par la table de correspondance (74 % retrouvés par simple comparaison de noms)."
+    sensibilite: "confidentiel"
+    regle: "Rapproché du code Sage par la table de correspondance, puis pseudonymisé."
+    controles: {non_nul: true, gravite: "erreur"}
+
+  - source: "Propriétaire de l'opportunité"
+    entrepot: "dim_commercial.code_commercial"
+    type: "texte"
+    obligatoire: true
+    description: "Commercial responsable de l'opportunité. Donnée personnelle."
+    sensibilite: "personnel"
+    regle: "Pseudonymisé (Commercial 04)."
+    controles: {non_nul: true, gravite: "avertissement"}
+
+  - source: "Montant global"
+    entrepot: "fait_opportunite.montant_global"
+    type: "décimal"
+    obligatoire: true
+    description: "Montant total de l'opportunité, en euros."
+    sensibilite: "confidentiel"
+    regle: "Multiplié par un coefficient secret dans le jeu de démonstration."
+    controles: {non_nul: true, gravite: "avertissement"}
+
+  - source: "Domaine"
+    entrepot: "dim_domaine.domaine"
+    type: "texte"
+    obligatoire: false
+    description: "Domaine d'activité, au format « 1. COMMUNICATION CLIENT ». Manquant sur environ un quart des lignes."
+    sensibilite: "interne"
+    regle: "Normalisé en D1, D2, D3, D4."
+
+  - source: "Groupe Crédit Agricole"
+    entrepot: "dim_segment.libelle"
+    type: "texte"
+    obligatoire: false
+    description: "Oui si le compte appartient au groupe actionnaire. Concorde à 100 % avec le segment de Sage sur les comptes retrouvés."
+    sensibilite: "confidentiel"
+    regle: "Oui devient Groupe, Non devient Hors groupe. Sage reste la référence."
+    controles: {valeurs: ["Oui", "Non"], gravite: "avertissement"}
+
+  - source: "Étape"
+    entrepot: "dim_etape.libelle"
+    type: "texte"
+    obligatoire: true
+    description: "Étape du pipeline : À venir, En cours, Envoyée, Proposition en attente de validation, Fermée, Abandon projet client."
+    sensibilite: "interne"
+    regle: "Conservée telle quelle."
+    controles: {non_nul: true, gravite: "avertissement"}
+
+  - source: "Motif de clôture"
+    entrepot: "dim_motif_cloture.libelle"
+    type: "texte"
+    obligatoire: false
+    description: "Motif quand l'opportunité est fermée : Gagnée, Perdue, Abandonnée, No Go. Vide tant qu'elle est ouverte."
+    sensibilite: "interne"
+    regle: "Conservé tel quel."
+
+  - source: "Nombre de mois"
+    entrepot: "fait_opportunite.nb_mois"
+    type: "entier"
+    obligatoire: false
+    description: "Durée du contrat en mois."
+    sensibilite: "interne"
+    regle: "Conservé tel quel."
+
+  - source: "Type d'affaire"
+    entrepot: "dim_statut_opportunite.type_affaire"
+    type: "texte"
+    obligatoire: false
+    description: "Nouveau Business, Fertilisation, Remise en concurrence ou Renouvellement Client."
+    sensibilite: "interne"
+    regle: "Nouveau Business reste séparé de la continuité (les trois autres)."
+
+colonnes_derivees:
+  - entrepot: "fait_opportunite.date_photo_id"
+    type: "date"
+    description: "Date et heure d'extraction lues dans la ligne de titre de l'export."
+    sensibilite: "interne"
+    regle: "Extraite de la ligne « Au AAAA-MM-JJ hh:mm:ss »."
+  - entrepot: "dim_statut_opportunite.est_gagnee"
+    type: "booléen"
+    description: "Vrai si le motif de clôture commence par Gagnée."
+    sensibilite: "interne"
+    regle: "Déduit du motif de clôture."
+
+regles_table:
+  - id: "O01"
+    description: "Win ratio : deux définitions. Gagnées sur gagnées et perdues donne 87 %. En comptant aussi les abandons et les No Go comme échecs, 46 %. À valider avec la direction commerciale."
+    gravite: "information"
+  - id: "O03"
+    description: "Les deux dernières lignes de l'export sont une ligne de total (son montant égale la somme des autres) et une ligne de pied de page : elles sont ignorées, sinon le pipeline serait compté deux fois."
+    gravite: "erreur"
+  - id: "O02"
+    description: "Chaque compte doit être rapproché d'un tiers Sage ; sinon il est chargé avec un tiers « non rapproché »."
+    gravite: "avertissement"
+
+qualite_globale:
+  taux_rejet_max: 0.01

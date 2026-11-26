@@ -1,0 +1,12 @@
+entreprise_comex:
+  target: local
+  outputs:
+    local:
+      type: postgres
+      host: "{{ env_var('PG_HOTE', 'localhost') }}"
+      port: "{{ env_var('PG_PORT', '5442') | as_number }}"
+      user: "{{ env_var('PG_UTILISATEUR', 'entrepot') }}"
+      password: "{{ env_var('PG_MOT_DE_PASSE') }}"
+      dbname: "{{ env_var('PG_BASE', 'entrepot') }}"
+      schema: dbt
+      threads: 4

@@ -1,0 +1,144 @@
+name: cd
+
+on:
+  workflow_run:
+    workflows: [ci]
+    types: [completed]
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      deploiement_clever:
+        description: "Déployer aussi sur Clever Cloud"
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+  packages: write
+
+concurrency:
+  group: cd
+  cancel-in-progress: false
+
+jobs:
+  version:
+    if: github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success'
+    runs-on: ubuntu-latest
+    outputs:
+      sha: ${{ steps.v.outputs.sha }}
+      tag: ${{ steps.v.outputs.tag }}
+      registre: ${{ steps.v.outputs.registre }}
+    steps:
+      - id: v
+        run: |
+          sha="${{ github.event.workflow_run.head_sha || github.sha }}"
+          echo "sha=$sha" >> "$GITHUB_OUTPUT"
+          echo "tag=${sha:0:12}" >> "$GITHUB_OUTPUT"
+          echo "registre=ghcr.io/${GITHUB_REPOSITORY,,}" >> "$GITHUB_OUTPUT"
+
+  publier:
+    needs: version
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        image: [api, spark, dbt, score, web]
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.version.outputs.sha }}
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: Dockerfile.${{ matrix.image }}
+          push: true
+          tags: |
+            ${{ needs.version.outputs.registre }}/${{ matrix.image }}:${{ needs.version.outputs.tag }}
+            ${{ needs.version.outputs.registre }}/${{ matrix.image }}:latest
+          cache-from: type=gha,scope=${{ matrix.image }}
+          cache-to: type=gha,mode=max,scope=${{ matrix.image }}
+
+  deploiement-kind:
+    needs: [version, publier]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.version.outputs.sha }}
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - uses: helm/kind-action@v1
+        with:
+          cluster_name: comex
+      - name: Récupérer les images publiées et les charger dans le cluster
+        run: |
+          for image in score web; do
+            docker pull "${{ needs.version.outputs.registre }}/$image:${{ needs.version.outputs.tag }}"
+            kind load docker-image "${{ needs.version.outputs.registre }}/$image:${{ needs.version.outputs.tag }}" --name comex
+          done
+      - name: Déployer dans kind et contrôler
+        env:
+          REGISTRE: ${{ needs.version.outputs.registre }}
+          IMAGE_TAG: ${{ needs.version.outputs.tag }}
+          GENERER_SECRETS: "1"
+        run: ./k8s/deployer.sh
+      - name: État du cluster en cas d'échec
+        if: failure()
+        run: |
+          kubectl --namespace comex get pods -o wide || true
+          kubectl --namespace comex describe pods || true
+          for d in score web; do kubectl --namespace comex logs deployment/$d --tail=80 || true; done
+
+  deploiement-clever:
+    if: github.event_name == 'workflow_dispatch' && inputs.deploiement_clever
+    needs: [version, deploiement-kind]
+    runs-on: ubuntu-latest
+    env:
+      CLEVER_TOKEN: ${{ secrets.CLEVER_TOKEN }}
+      CLEVER_SECRET: ${{ secrets.CLEVER_SECRET }}
+      CLEVER_APP_WEB: ${{ vars.CLEVER_APP_WEB }}
+      CLEVER_APP_SCORE: ${{ vars.CLEVER_APP_SCORE }}
+      CLEVER_URL_WEB: ${{ vars.CLEVER_URL_WEB }}
+    steps:
+      - name: Vérifier la configuration
+        run: |
+          for v in CLEVER_TOKEN CLEVER_SECRET CLEVER_APP_WEB CLEVER_APP_SCORE CLEVER_URL_WEB; do
+            if [ -z "${!v}" ]; then echo "Variable ou secret manquant : $v" >&2; exit 1; fi
+          done
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.version.outputs.sha }}
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - run: npm install --global clever-tools@5.4.0
+      - name: Tableau de bord
+        run: |
+          clever link "$CLEVER_APP_WEB" --alias web
+          clever env set CC_DOCKERFILE Dockerfile.web --alias web
+          clever env set CC_DOCKER_EXPOSED_HTTP_PORT 3100 --alias web
+          clever env set MODE_DEMO 0 --alias web
+          clever deploy --alias web --same-commit-policy rebuild
+      - name: API de score
+        run: |
+          clever link "$CLEVER_APP_SCORE" --alias score
+          clever env set CC_DOCKERFILE Dockerfile.score --alias score
+          clever env set CC_DOCKER_EXPOSED_HTTP_PORT 8120 --alias score
+          clever deploy --alias score --same-commit-policy rebuild
+      - name: Contrôle après déploiement
+        run: |
+          for _ in $(seq 1 20); do
+            if curl --fail --silent --max-time 10 "$CLEVER_URL_WEB/api/sante" >/dev/null; then echo "tableau de bord en ligne"; exit 0; fi
+            sleep 10
+          done
+          echo "Le tableau de bord ne répond pas après le déploiement" >&2
+          exit 1

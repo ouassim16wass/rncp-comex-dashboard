@@ -1,0 +1,73 @@
+name: mlops
+
+on:
+  pull_request:
+    paths:
+      - src/risque.py
+      - src/registre.py
+      - src/modele_risque.py
+      - src/surveillance_modele.py
+      - src/jeu_synthetique.py
+      - src/entrainement_synthetique.py
+      - src/api_score.py
+      - tests/test_mlops.py
+      - tests/test_score.py
+      - observabilite/**
+      - .github/workflows/mlops.yml
+  workflow_dispatch:
+  schedule:
+    - cron: "0 5 * * 1"
+
+permissions:
+  contents: read
+
+jobs:
+  entrainement-controle:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+          cache: pip
+      - run: pip install -r requirements.txt
+      - name: Tests du registre, de la dérive et de la journalisation
+        run: pytest tests/test_mlops.py tests/test_score.py -q
+      - name: Entraînement complet sur données synthétiques, porte qualité comprise
+        run: python src/entrainement_synthetique.py resultat_entrainement.json
+        env:
+          SERVICE: ci-mlops
+      - uses: actions/upload-artifact@v4
+        with:
+          name: resultat-entrainement
+          path: resultat_entrainement.json
+
+  observabilite:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - name: Tableaux Grafana générés identiques à ceux du dépôt
+        run: |
+          python observabilite/generer_tableaux.py
+          git diff --exit-code observabilite/grafana/tableaux
+      - name: Règles et configuration Prometheus valides
+        run: |
+          docker run --rm --entrypoint promtool -v "$PWD/observabilite:/c:ro" prom/prometheus:v2.55.1 check rules /c/alertes.yml
+          docker run --rm --entrypoint promtool -v "$PWD/observabilite:/c:ro" prom/prometheus:v2.55.1 check config /c/prometheus.yml
+
+  image-score:
+    runs-on: ubuntu-latest
+    needs: entrainement-controle
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: Dockerfile.score
+          push: false
+          cache-from: type=gha,scope=score
+          cache-to: type=gha,mode=max,scope=score

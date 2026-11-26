@@ -1,0 +1,67 @@
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: modele-surveillance
+  namespace: comex
+spec:
+  schedule: "0 6 * * *"
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 5
+  jobTemplate:
+    spec:
+      backoffLimit: 1
+      template:
+        spec:
+          restartPolicy: Never
+          containers:
+            - name: surveillance
+              image: registre.interne/entreprise/modele:latest
+              command: ["python", "src/surveillance_modele.py"]
+              envFrom:
+                - secretRef:
+                    name: comex-base
+              env:
+                - name: SERVICE
+                  value: surveillance-modele
+              volumeMounts:
+                - name: registre
+                  mountPath: /app/models
+          volumes:
+            - name: registre
+              persistentVolumeClaim:
+                claimName: registre-modeles
+---
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: modele-entrainement
+  namespace: comex
+spec:
+  schedule: "0 4 1 * *"
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 5
+  jobTemplate:
+    spec:
+      backoffLimit: 0
+      template:
+        spec:
+          restartPolicy: Never
+          containers:
+            - name: entrainement
+              image: registre.interne/entreprise/modele:latest
+              command: ["python", "src/modele_risque.py"]
+              envFrom:
+                - secretRef:
+                    name: comex-base
+              env:
+                - name: SERVICE
+                  value: entrainement-modele
+              volumeMounts:
+                - name: registre
+                  mountPath: /app/models
+          volumes:
+            - name: registre
+              persistentVolumeClaim:
+                claimName: registre-modeles

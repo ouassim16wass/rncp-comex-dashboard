@@ -1,0 +1,88 @@
+# Colonnes de l'entrepôt qui ne viennent d'aucun fichier : elles sont générées ou calculées.
+referentiels:
+  - table: "dim_date"
+    origine: "Calendrier généré par l'entrepôt (une ligne par jour)"
+    colonnes:
+      - {nom: "date_id", type: "entier", description: "Identifiant du jour, au format AAAAMMJJ.", sensibilite: "interne"}
+      - {nom: "date", type: "date", description: "Le jour.", sensibilite: "interne"}
+      - {nom: "mois_id", type: "entier", description: "Mois civil auquel appartient le jour (dim_mois).", sensibilite: "interne"}
+  - table: "dim_mois"
+    origine: "Calendrier généré par l'entrepôt"
+    colonnes:
+      - {nom: "mois_id", type: "entier", description: "Identifiant du mois civil, au format AAAAMM.", sensibilite: "interne"}
+      - {nom: "mois", type: "entier", description: "Numéro du mois de 1 à 12.", sensibilite: "interne"}
+      - {nom: "libelle", type: "texte", description: "Nom du mois.", sensibilite: "interne"}
+      - {nom: "trimestre_id", type: "entier", description: "Trimestre auquel appartient le mois (dim_trimestre).", sensibilite: "interne"}
+  - table: "dim_trimestre"
+    origine: "Calendrier généré par l'entrepôt"
+    colonnes:
+      - {nom: "trimestre_id", type: "entier", description: "Identifiant du trimestre, au format AAAAT.", sensibilite: "interne"}
+      - {nom: "trimestre", type: "entier", description: "Numéro du trimestre de 1 à 4.", sensibilite: "interne"}
+      - {nom: "annee", type: "entier", description: "Année civile.", sensibilite: "interne"}
+  - table: "dim_mois_facturation"
+    origine: "Valeurs de la colonne Mois du CA facturé Sage"
+    colonnes:
+      - {nom: "mois_facturation_id", type: "entier", description: "Identifiant du mois de facturation.", sensibilite: "interne"}
+      - {nom: "mois_sage", type: "entier", description: "Mois du cycle de facturation tel que Sage le fournit.", sensibilite: "interne"}
+      - {nom: "annee", type: "entier", description: "Année du cycle de facturation.", sensibilite: "interne"}
+  - table: "dim_type_tiers"
+    origine: "Deux valeurs fixes"
+    colonnes:
+      - {nom: "type_tiers_id", type: "entier", description: "Identifiant du type de tiers.", sensibilite: "interne"}
+      - {nom: "libelle", type: "texte", description: "client ou fournisseur.", sensibilite: "interne"}
+  - table: "dim_segment"
+    origine: "Valeurs normalisées des colonnes G/HG, Groupe/HG et la colonne de groupe de Salesforce"
+    colonnes:
+      - {nom: "segment_id", type: "entier", description: "Identifiant du segment.", sensibilite: "interne"}
+      - {nom: "libelle", type: "texte", description: "Groupe, Hors groupe, Public ou Douteux. Sage est la référence en cas d'écart.", sensibilite: "confidentiel"}
+  - table: "dim_tiers"
+    origine: "Table de correspondance des clients (Sage, Salesforce, iTop)"
+    colonnes:
+      - {nom: "tiers_id", type: "entier", description: "Identifiant unique d'un tiers dans l'entrepôt.", sensibilite: "interne"}
+      - {nom: "type_tiers_id", type: "entier", description: "Rattache le tiers à client ou fournisseur.", sensibilite: "interne"}
+      - {nom: "segment_id", type: "entier", description: "Rattache le tiers à son segment.", sensibilite: "confidentiel"}
+  - table: "dim_service"
+    origine: "Codes de service du CA facturé Sage"
+    colonnes:
+      - {nom: "service_id", type: "entier", description: "Identifiant du code de service.", sensibilite: "interne"}
+      - {nom: "domaine_id", type: "entier", description: "Domaine auquel le code de service appartient (vérifié à 100 %).", sensibilite: "interne"}
+  - table: "dim_domaine"
+    origine: "Quatre domaines D1 à D4"
+    colonnes:
+      - {nom: "domaine_id", type: "entier", description: "Identifiant du domaine.", sensibilite: "interne"}
+  - table: "dim_commercial"
+    origine: "Codes commerciaux de Sage et propriétaires Salesforce"
+    colonnes:
+      - {nom: "commercial_id", type: "entier", description: "Identifiant d'un commercial dans l'entrepôt, sans nom.", sensibilite: "personnel"}
+  - table: "dim_produit"
+    origine: "Articles du CA facturé Sage"
+    colonnes:
+      - {nom: "produit_id", type: "entier", description: "Identifiant de l'article.", sensibilite: "interne"}
+      - {nom: "famille_id", type: "entier", description: "Famille d'articles (dim_famille_produit).", sensibilite: "interne"}
+  - table: "dim_famille_produit"
+    origine: "Familles statistiques du CA facturé Sage"
+    colonnes:
+      - {nom: "famille_id", type: "entier", description: "Identifiant de la famille d'articles.", sensibilite: "interne"}
+  - table: "dim_compte"
+    origine: "Comptes généraux de la marge et du CA facturé Sage"
+    colonnes:
+      - {nom: "compte_id", type: "entier", description: "Identifiant du compte comptable.", sensibilite: "interne"}
+      - {nom: "classe_id", type: "entier", description: "Classe du compte (dim_classe_compte).", sensibilite: "interne"}
+  - table: "dim_classe_compte"
+    origine: "Colonne LIB 1 de la marge Sage"
+    colonnes:
+      - {nom: "classe_id", type: "entier", description: "Identifiant de la classe de compte.", sensibilite: "interne"}
+  - table: "dim_statut_opportunite"
+    origine: "Combinaisons étape, motif et type d'affaire des opportunités Salesforce"
+    colonnes:
+      - {nom: "statut_id", type: "entier", description: "Identifiant de la combinaison étape, motif et type d'affaire.", sensibilite: "interne"}
+      - {nom: "etape_id", type: "entier", description: "Étape du pipeline (dim_etape).", sensibilite: "interne"}
+      - {nom: "motif_id", type: "entier", description: "Motif de clôture (dim_motif_cloture).", sensibilite: "interne"}
+  - table: "dim_etape"
+    origine: "Colonne Étape des opportunités Salesforce"
+    colonnes:
+      - {nom: "etape_id", type: "entier", description: "Identifiant de l'étape.", sensibilite: "interne"}
+  - table: "dim_motif_cloture"
+    origine: "Colonne Motif de clôture des opportunités Salesforce"
+    colonnes:
+      - {nom: "motif_id", type: "entier", description: "Identifiant du motif de clôture.", sensibilite: "interne"}

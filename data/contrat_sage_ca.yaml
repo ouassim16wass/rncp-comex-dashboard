@@ -1,0 +1,176 @@
+# Contrat de données : CA facturé Sage
+# Sensibilité : public | interne | confidentiel | personnel
+contrat:
+  nom: "sage_ca_facture"
+  version: "1.0"
+  source: "Sage (API)"
+  proprietaire: "Direction administrative et financière (rôle)"
+  finalite: "Suivre le chiffre d'affaires facturé par client, domaine et mois pour le tableau de bord de direction."
+  base_legale: "Intérêt légitime : pilotage de la performance (à valider avec le DPO)"
+  conservation: "À définir avec le DPO"
+  frequence: "Mensuelle, vers le 20 du mois"
+  grain: "Une ligne de facture"
+  table_cible: "fait_facturation"
+
+entree:
+  acquisition: "API. Pendant le développement, un simulateur d'API rejoue les extractions Excel fournies par l'entreprise."
+  format_extraction_reference: "xlsx"
+  fichiers: "ca-facture-*.xlsx, CA facturé *.xlsx"
+  feuille: "première feuille"
+  regle_extraction: "Chaque extraction remplace la précédente : on garde le fichier le plus récent pour une même période."
+  lignes_vides: "ignorées"
+
+colonnes:
+  - source: "Date facture"
+    entrepot: "fait_facturation.date_facture_id"
+    type: "date"
+    obligatoire: true
+    description: "Date d'émission de la facture."
+    sensibilite: "interne"
+    regle: "Convertie en identifiant de date (dim_date)."
+    controles: {non_nul: true, gravite: "erreur"}
+
+  - source: "No facture"
+    entrepot: "fait_facturation.no_facture"
+    type: "texte"
+    obligatoire: true
+    description: "Numéro de la facture Sage. Une facture compte plusieurs lignes."
+    sensibilite: "interne"
+    regle: "Conservé tel quel."
+    controles: {non_nul: true, gravite: "erreur"}
+
+  - source: "Type facture"
+    entrepot: "fait_facturation.type_facture"
+    type: "texte"
+    obligatoire: true
+    description: "FAC pour une facture, AVO pour un avoir."
+    sensibilite: "interne"
+    regle: "Conservé tel quel."
+    controles: {valeurs: ["FAC", "AVO"], gravite: "erreur"}
+
+  - source: "Tiers"
+    entrepot: "dim_tiers.code_sage"
+    type: "texte"
+    obligatoire: true
+    description: "Code du client dans Sage. Clé de jointure avec les factures clients et la marge."
+    sensibilite: "confidentiel"
+    regle: "Remplacé par un identifiant de tiers (dim_tiers), jamais exposé dans le jeu de démonstration."
+    controles: {non_nul: true, gravite: "erreur"}
+
+  - source: "Raison sociale"
+    entrepot: "dim_tiers.raison_sociale_pseudo"
+    type: "texte"
+    obligatoire: true
+    description: "Nom du client."
+    sensibilite: "confidentiel"
+    regle: "Pseudonymisé (Client 017) dans le jeu de démonstration."
+    controles: {non_nul: true, gravite: "erreur"}
+
+  - source: "G/HG"
+    entrepot: "dim_segment.libelle"
+    type: "texte"
+    obligatoire: true
+    description: "Appartenance du client au groupe actionnaire : G pour Groupe, HG pour Hors Groupe."
+    sensibilite: "confidentiel"
+    regle: "G devient Groupe et HG devient Hors groupe (dim_segment)."
+    controles: {valeurs: ["G", "HG"], gravite: "erreur"}
+
+  - source: "Article"
+    entrepot: "dim_produit.article"
+    type: "texte"
+    obligatoire: true
+    description: "Code de l'article facturé."
+    sensibilite: "interne"
+    regle: "Conservé tel quel."
+    controles: {non_nul: true, gravite: "avertissement"}
+
+  - source: "Famille statistique"
+    entrepot: "dim_famille_produit.famille_statistique"
+    type: "texte"
+    obligatoire: false
+    description: "Famille d'articles utilisée pour les statistiques de vente."
+    sensibilite: "interne"
+    regle: "Conservé tel quel."
+
+  - source: "Mois"
+    entrepot: "dim_mois_facturation.mois_sage"
+    type: "entier"
+    obligatoire: true
+    description: "Mois du cycle de facturation. Il ne suit pas le mois civil : il commence autour du 20. Règle exacte à confirmer avec la DAF."
+    sensibilite: "interne"
+    regle: "Conservé avec la date réelle de la facture pour pouvoir changer de règle."
+    controles: {min: 1, max: 12, gravite: "erreur"}
+
+  - source: "Qté facturée"
+    entrepot: "fait_facturation.quantite"
+    type: "décimal"
+    obligatoire: false
+    description: "Quantité facturée sur la ligne."
+    sensibilite: "confidentiel"
+    regle: "Conservée telle quelle."
+
+  - source: "Montant HT"
+    entrepot: "fait_facturation.montant_ht"
+    type: "décimal"
+    obligatoire: true
+    description: "Montant hors taxes de la ligne, en euros. Négatif pour un avoir."
+    sensibilite: "confidentiel"
+    regle: "Multiplié par un coefficient secret dans le jeu de démonstration."
+    controles: {non_nul: true, gravite: "erreur"}
+
+  - source: "Services"
+    entrepot: "dim_service.code_service"
+    type: "entier"
+    obligatoire: true
+    description: "Code de service. Il détermine le domaine. Le code 990 correspond au négoce et est exclu du CA facturé."
+    sensibilite: "interne"
+    regle: "Rattaché à son domaine (dim_service vers dim_domaine). Les lignes 990 sont chargées mais exclues du calcul du CA."
+    controles: {non_nul: true, gravite: "erreur"}
+
+  - source: "Domaine"
+    entrepot: "dim_domaine.domaine"
+    type: "texte"
+    obligatoire: true
+    description: "Domaine d'activité : D1 communication client, D2 dématérialisation, D3 plateformes digitales, D4 solutions de confiance."
+    sensibilite: "interne"
+    regle: "Conservé tel quel."
+    controles: {valeurs: ["D1", "D2", "D3", "D4", "HD"], gravite: "avertissement"}
+
+  - source: "Build/Run"
+    entrepot: "fait_facturation.build_run"
+    type: "texte"
+    obligatoire: false
+    description: "BUILD pour une prestation de construction (projet) ou RUN pour une prestation récurrente d'exploitation. À confirmer avec la DAF."
+    sensibilite: "interne"
+    regle: "Conservé tel quel."
+    controles: {valeurs: ["BUILD", "RUN"], gravite: "avertissement"}
+
+  - source: "Code Commercial"
+    entrepot: "dim_commercial.code_commercial"
+    type: "entier"
+    obligatoire: false
+    description: "Code du commercial responsable de l'affaire. Il identifie indirectement une personne."
+    sensibilite: "personnel"
+    regle: "Pseudonymisé (Commercial 04). Le nom du commercial n'est pas conservé."
+
+  - source: "Comptes généraux"
+    entrepot: "dim_compte.compte_general"
+    type: "entier"
+    obligatoire: false
+    description: "Compte comptable de produit. Il permet de séparer le négoce du reste du CA."
+    sensibilite: "interne"
+    regle: "Rattaché à dim_compte puis à sa classe (dim_classe_compte)."
+
+regles_table:
+  - id: "T01"
+    description: "Les avoirs (AVO) doivent avoir un montant négatif."
+    gravite: "avertissement"
+  - id: "T02"
+    description: "Les lignes en double exact existent (même article facturé deux fois) et sont conservées."
+    gravite: "information"
+  - id: "T03"
+    description: "Chaque code Tiers doit exister dans les factures clients (jointure)."
+    gravite: "avertissement"
+
+qualite_globale:
+  taux_rejet_max: 0.01
